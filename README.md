@@ -1,2 +1,5 @@
-# Data-Structure-Lab
-Task of Data Sturcture Lab
+# Data Structure Project
++++Complaint Management System+++
+
+Faruk Ahamed
+242-35-760
