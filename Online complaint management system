@@ -1,44 +1,107 @@
-    #include <stdio.h>
-    #include <string.h>
-    #include <stdlib.h>
-    
-    struct User
-    {
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+struct User {
     char username[20];
     char password[20];
     char role[10];
-    };
-    struct Complaint {
-        int id;
-        char username[20];
-        char type[30];
-        char description[100];
-        char status[10];
-    };
-    
-    struct User users[100];
-    int userCount = 0;
-    struct Complaint complaints[100];
-    int complaintCount = 0;
-    
-    void loadUsers() {
-        FILE *fp = fopen("users.txt", "r");
-        if (fp) {
-            while (fscanf(fp, "%s %s %s", users[userCount].username, users[userCount].password, users[userCount].role) != EOF) {
-                userCount++;
+};
+struct User users[100];
+int userCount = 0;
+
+struct Complaint {
+    int id;
+    char username[20];
+    char type[30];
+    char description[100];
+    char status[10];
+};
+
+typedef struct ComplaintNode {
+    struct Complaint data;
+    struct ComplaintNode *next;
+} ComplaintNode;
+
+ComplaintNode *complaintHead = NULL;
+int complaintCount = 0;
+
+int pendingQueue[200];
+int qFront = 0, qRear = 0;  
+
+int qIsEmpty() { return qFront == qRear; }
+int qIsFull() { return ((qRear + 1) % 200) == qFront; }
+void enqueue(int id) { if (!qIsFull()) { pendingQueue[qRear] = id; qRear = (qRear + 1) % 200; } }
+int dequeue() { if (qIsEmpty()) return -1; int v = pendingQueue[qFront]; qFront = (qFront + 1) % 200; return v; }
+int qPeek() { if (qIsEmpty()) return -1; return pendingQueue[qFront]; }
+void qRemoveIfMatches(int id) { 
+    if (qIsEmpty()) return;
+    int size = (qRear - qFront + 200) % 200;
+    int temp[200], t = 0;
+    for (int i = 0; i < size; i++) {
+        int cur = pendingQueue[(qFront + i) % 200];
+        if (cur != id) temp[t++] = cur;
+    }
+    qFront = 0; qRear = 0;
+    for (int i = 0; i < t; i++) enqueue(temp[i]);
+}
+
+char loginStack[100][20];
+int top = -1;
+void pushLogin(const char *u) { if (top < 99) { ++top; strncpy(loginStack[top], u, 19); loginStack[top][19] = '\0'; } }
+void popLogin() { if (top >= 0) --top; }
+
+
+void trim_newline(char *s) {
+    if (!s) return;
+    size_t n = strlen(s);
+    if (n && s[n-1] == '\n') s[n-1] = '\0';
+}
+
+void replace_char(char *s, char from, char to) {
+    for (; *s; ++s) if (*s == from) *s = to;
+}
+
+void addComplaintNode(struct Complaint c) {
+    ComplaintNode *node = (ComplaintNode*)malloc(sizeof(ComplaintNode));
+    node->data = c;
+    node->next = NULL;
+    if (!complaintHead) {
+        complaintHead = node;
+    } else {
+        ComplaintNode *p = complaintHead;
+        while (p->next) p = p->next;
+        p->next = node;
+    }
+}
+ComplaintNode* findComplaintById(int id) {
+    ComplaintNode *p = complaintHead;
+    while (p) {
+        if (p->data.id == id) return p;
+        p = p->next;
+    }
+    return NULL;
+}
+void loadUsers() {
+    FILE *fp = fopen("users.txt", "r");
+    if (fp) {
+        while (fscanf(fp, "%19s %19s %9s", users[userCount].username,
+                      users[userCount].password, users[userCount].role) == 3) {
+            userCount++;
+            if (userCount >= 100) break;
         }
         fclose(fp);
     } else {
         FILE *fpw = fopen("users.txt", "w");
-        fprintf(fpw, "Afnan 12345 admin\n");
-        fprintf(fpw, "faruk 67890 staff\n");
-        fclose(fpw);
+        if (fpw) {
+            fprintf(fpw, "Afnan 12345 admin\n");
+            fprintf(fpw, "faruk 67890 staff\n");
+            fclose(fpw);
+        }
         strcpy(users[0].username, "Afnan"); strcpy(users[0].password, "12345"); strcpy(users[0].role, "admin");
         strcpy(users[1].username, "faruk"); strcpy(users[1].password, "67890"); strcpy(users[1].role, "staff");
         userCount = 2;
     }
 }
-
 void saveUser(struct User u) {
     FILE *fp = fopen("users.txt", "a");
     if (fp) {
@@ -46,30 +109,64 @@ void saveUser(struct User u) {
         fclose(fp);
     }
 }
-
 void loadComplaints() {
     FILE *fp = fopen("complaints.txt", "r");
-    if (fp) {
-        while (fscanf(fp, "%d %s %s %[^\"] %[^\"]",
-                      &complaints[complaintCount].id,
-                      complaints[complaintCount].username,
-                      complaints[complaintCount].type,
-                      complaints[complaintCount].description,
-                      complaints[complaintCount].status) != EOF) {
-            complaintCount++;
-        }
-        fclose(fp);
-    }
-}
+    if (!fp) return;
 
-void saveComplaint(struct Complaint c) {
+    char line[512];
+    while (fgets(line, sizeof(line), fp)) {
+        trim_newline(line);
+        if (!line[0]) continue;
+
+        struct Complaint c;
+        char idbuf[16], user[32], type[64], desc[128], status[16];
+       char *tok = strtok(line, "|");
+        if (!tok) continue; strncpy(idbuf, tok, sizeof(idbuf)-1); idbuf[sizeof(idbuf)-1] = '\0';
+
+        tok = strtok(NULL, "|"); if (!tok) continue; strncpy(user, tok, sizeof(user)-1); user[sizeof(user)-1] = '\0';
+        tok = strtok(NULL, "|"); if (!tok) continue; strncpy(type, tok, sizeof(type)-1); type[sizeof(type)-1] = '\0';
+        tok = strtok(NULL, "|"); if (!tok) continue; strncpy(desc, tok, sizeof(desc)-1); desc[sizeof(desc)-1] = '\0';
+        tok = strtok(NULL, "|"); if (!tok) continue; strncpy(status, tok, sizeof(status)-1); status[sizeof(status)-1] = '\0';
+c.id = atoi(idbuf);
+        strncpy(c.username, user, sizeof(c.username)-1); c.username[sizeof(c.username)-1] = '\0';
+        strncpy(c.type, type, sizeof(c.type)-1); c.type[sizeof(c.type)-1] = '\0';
+        strncpy(c.description, desc, sizeof(c.description)-1); c.description[sizeof(c.description)-1] = '\0';
+        strncpy(c.status, status, sizeof(c.status)-1); c.status[sizeof(c.status)-1] = '\0';
+addComplaintNode(c);
+        complaintCount = (complaintCount < c.id) ? c.id : complaintCount; /* ensure max id tracked */
+
+        if (strcmp(c.status, "Pending") == 0) enqueue(c.id);
+    }
+    fclose(fp);
+}
+void appendComplaintToFile(struct Complaint c) {
     FILE *fp = fopen("complaints.txt", "a");
-    if (fp) {
-        fprintf(fp, "%d %s %s %s %s\n", c.id, c.username, c.type, c.description, c.status);
-        fclose(fp);
-    }
+    if (!fp) return;
+    /* Escape internal '|' just in case */
+    char safeDesc[100]; strncpy(safeDesc, c.description, sizeof(safeDesc)-1); safeDesc[sizeof(safeDesc)-1] = '\0';
+    replace_char(safeDesc, '|', '/');
+    fprintf(fp, "%d|%s|%s|%s|%s\n", c.id, c.username, c.type, safeDesc, c.status);
+    fclose(fp);
 }
-
+void rewriteAllComplaintsFile() {
+    FILE *fp = fopen("complaints.txt", "w");
+    if (!fp) return;
+    ComplaintNode *p = complaintHead;
+    while (p) {
+        char safeDesc[100]; strncpy(safeDesc, p->data.description, sizeof(safeDesc)-1); safeDesc[sizeof(safeDesc)-1] = '\0';
+        replace_char(safeDesc, '|', '/');
+        fprintf(fp, "%d|%s|%s|%s|%s\n",
+                p->data.id, p->data.username, p->data.type, safeDesc, p->data.status);
+        p = p->next;
+    }
+    fclose(fp);
+}
+void showHeader() {
+    printf("\n\t\t\t _______________________________________________\n");
+    printf("\t\t\t|                                               |\n");
+    printf("\t\t\t|        COMPLAINT MANAGEMENT SYSTEM            |\n");
+    printf("\t\t\t|_______________________________________________|\n\n");
+}
 void registerUser() {
     if (userCount >= 100) return;
     struct User u;
@@ -83,7 +180,6 @@ void registerUser() {
     saveUser(u);
     printf("User registered successfully!\n\n");
 }
-
 int loginWithRole(char *username, char *roleOut, const char *expectedRole) {
     char pass[20];
     printf("\n\t\tLogin as %s\t\t\n", expectedRole);
@@ -92,73 +188,83 @@ int loginWithRole(char *username, char *roleOut, const char *expectedRole) {
     printf("Password: ");
     scanf("%19s", pass);
     for (int i = 0; i < userCount; i++) {
-        if (strcmp(users[i].username, username) == 0 && strcmp(users[i].password, pass) == 0 && strcmp(users[i].role, expectedRole) == 0) {
+        if (strcmp(users[i].username, username) == 0 &&
+            strcmp(users[i].password, pass) == 0 &&
+            strcmp(users[i].role, expectedRole) == 0) {
             strcpy(roleOut, users[i].role);
+            pushLogin(username); 
             return 1;
         }
     }
     return 0;
 }
 void fileComplaint(char *username) {
-    if (complaintCount >= 100) return;
+    if (complaintCount >= 1000000) return; 
     struct Complaint c;
-    c.id = complaintCount + 1;
+
+c.id = complaintCount + 1;   
     strcpy(c.username, username);
 
-    printf("\n\t\tFile a Complaint\t\t\n");
+printf("\n\t\tFile a Complaint\t\t\n");
     printf("Complaint type: ");
     scanf("%29s", c.type);
-    getchar();  // Consume newline left by previous scanf
+    getchar( );  
 
     printf("Description: ");
     fgets(c.description, sizeof(c.description), stdin);
-    c.description[strcspn(c.description, "\n")] = 0;  // Remove trailing newline
+c.description[strcspn(c.description, "\n")] = 0;
 
     strcpy(c.status, "Pending");
-    complaints[complaintCount++] = c;
-    saveComplaint(c);
+
+    addComplaintNode(c);        
+    complaintCount = c.id;
+    enqueue(c.id);               
+    appendComplaintToFile(c);    
     printf("Complaint filed successfully!\n\n");
 }
-
-
 void viewComplaints(char *username) {
     int found = 0;
     printf("\n\t\tYour Complaints\t\t\n");
-    for (int i = 0; i < complaintCount; i++) {
-        if (strcmp(complaints[i].username, username) == 0) {
+    ComplaintNode *p = complaintHead;
+    while (p) {
+        if (strcmp(p->data.username, username) == 0) {
             printf("ID: %d\nType: %s\nDescription:%s\nStatus:%s\n\n",
-                   complaints[i].id, complaints[i].type, complaints[i].description, complaints[i].status);
+                   p->data.id, p->data.type, p->data.description, p->data.status);
             found = 1;
         }
+        p = p->next;
     }
     if (!found) printf("No complaints found.\n\n");
 }
-
 void staffPanel() {
     int id;
     char status[10];
     printf("\n\t\tAll Complaints \t\t\n");
-    for (int i = 0; i < complaintCount; i++) {
+    ComplaintNode *p = complaintHead;
+    while (p) {
         printf("ID: %d\nUser: %s\nType: %s\nDescription: %s\nStatus: %s\n\n",
-               complaints[i].id, complaints[i].username, complaints[i].type, complaints[i].description, complaints[i].status);
+               p->data.id, p->data.username, p->data.type, p->data.description, p->data.status);
+        p = p->next;
     }
     printf("Enter complaint ID to update status (0 to skip): ");
     scanf("%d", &id);
     if (id > 0 && id <= complaintCount) {
-        printf("Enter new status (Approved/Denied/Pending): ");
-        scanf("%9s", status);
-        strcpy(complaints[id - 1].status, status);
-        FILE *fp = fopen("complaints.txt", "w");
-        for (int i = 0; i < complaintCount; i++) {
-            fprintf(fp, "%d %s %s %s %s\n",
-                    complaints[i].id, complaints[i].username, complaints[i].type,
-                    complaints[i].description, complaints[i].status);
+        ComplaintNode *node = findComplaintById(id);
+        if (node) {
+            printf("Enter new status (Approved/Denied/Pending): ");
+            scanf("%9s", status);
+            strcpy(node->data.status, status);
+            rewriteAllComplaintsFile(); 
+            if (strcmp(status, "Pending") != 0) {
+                qRemoveIfMatches(id);  
+            } else {
+                qRemoveIfMatches(id);
+                enqueue(id);
+            }
+            printf("Status updated.\n");
         }
-        fclose(fp);
-        printf("Status updated.\n");
     }
 }
-
 void adminPanel() {
     int choice;
     struct User staff;
@@ -166,27 +272,30 @@ void adminPanel() {
     printf("1. Add Staff\n2. Remove Staff\n3. Generate Report\n4. Configure System Rules\nChoice: ");
     scanf("%d", &choice);
     if (choice == 1) {
-        printf("Enter staff username: ");
+    printf("Enter staff username: ");
         scanf("%19s", staff.username);
-        printf("Enter staff password: ");
+    printf("Enter staff password: ");
         scanf("%19s", staff.password);
         strcpy(staff.role, "staff");
-        users[userCount++] = staff;
+    users[userCount++] = staff;
         saveUser(staff);
         printf("Staff added successfully.\n");
     } else if (choice == 2) {
         char delname[20];
         printf("Enter staff username to remove: ");
         scanf("%19s", delname);
-        FILE *fp = fopen("users.txt", "w");
+    FILE *fp = fopen("users.txt", "w");
         int newCount = 0;
         for (int i = 0; i < userCount; i++) {
-            if (strcmp(users[i].username, delname) == 0 && strcmp(users[i].role, "staff") == 0) continue;
-            fprintf(fp, "%s %s %s\n", users[i].username, users[i].password, users[i].role);
-            users[newCount++] = users[i];
+            if (strcmp(users[i].username, delname) == 0 && strcmp(users[i].role, "staff") == 0) {
+                /* skip this one */
+            } else {
+                fprintf(fp, "%s %s %s\n", users[i].username, users[i].password, users[i].role);
+                users[newCount++] = users[i];
+            }
         }
-        userCount = newCount;
-        fclose(fp);
+    userCount = newCount;
+        if (fp) fclose(fp);
         printf("Staff removed successfully.\n");
     } else if (choice == 3) {
         printf("Generating report... (not implemented)\n");
@@ -196,26 +305,17 @@ void adminPanel() {
         printf("Invalid choice.\n");
     }
 }
-
-void showHeader() {
-    printf("\n\t\t\t _______________________________________________\n");
-    printf("\t\t\t|                                               |\n");
-    printf("\t\t\t|        COMPLAINT MANAGEMENT SYSTEM            |\n");
-    printf("\t\t\t|_______________________________________________|\n\n");
-}
-
 int main() {
     int choice;
     char currentUser[20];
     char currentRole[10];
 
-    loadUsers();
+loadUsers();
     loadComplaints();
-
-    while (1) {
+while (1) {
         showHeader();
         printf("1. Register \n2. Login\n3. Login as Staff\n4. Login as Admin\n5. Exit\nChoice: ");
-        scanf("%d", &choice);
+        if (scanf("%d", &choice) != 1) { fflush(stdin); continue; }
 
         if (choice == 1) {
             registerUser();
@@ -226,18 +326,20 @@ int main() {
                 if (strcmp(currentRole, "user") == 0) {
                     int dashChoice;
                     while (1) {
-                        printf("\n--- User Dashboard ---\n");
+            printf("\n--- User Dashboard ---\n");
                         printf("1. File Complaint\n2. View My Complaints\n3. Logout\nChoice: ");
-                        scanf("%d", &dashChoice);
+                        if (scanf("%d", &dashChoice) != 1) { fflush(stdin); continue; }
                         if (dashChoice == 1) fileComplaint(currentUser);
                         else if (dashChoice == 2) viewComplaints(currentUser);
-                        else if (dashChoice == 3) break;
+                        else if (dashChoice == 3) { popLogin(); break; }
                         else printf("Invalid choice.\n");
                     }
                 } else if (strcmp(currentRole, "staff") == 0) {
                     staffPanel();
+                    popLogin();
                 } else if (strcmp(currentRole, "admin") == 0) {
                     adminPanel();
+                    popLogin();
                 }
             } else {
                 printf("Invalid credentials for role %s.\n", roleName);
@@ -248,5 +350,6 @@ int main() {
         } else {
             printf("Invalid choice. Try again.\n");
         }
-    }}
-
+    }
+    return 0;
+}
