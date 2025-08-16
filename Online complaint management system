@@ -1,39 +1,31 @@
-
-
-
-
-
-
-
-
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-
-struct User
-{
-char username[20];
-char password[20];
-char role[10];
-};
-struct Complaint {
-    int id;
+    #include <stdio.h>
+    #include <string.h>
+    #include <stdlib.h>
+    
+    struct User
+    {
     char username[20];
-    char type[30];
-    char description[100];
-    char status[10];
-};
-
-struct User users[100];
-int userCount = 0;
-struct Complaint complaints[100];
-int complaintCount = 0;
-
-void loadUsers() {
-    FILE *fp = fopen("users.txt", "r");
-    if (fp) {
-        while (fscanf(fp, "%s %s %s", users[userCount].username, users[userCount].password, users[userCount].role) != EOF) {
-            userCount++;
+    char password[20];
+    char role[10];
+    };
+    struct Complaint {
+        int id;
+        char username[20];
+        char type[30];
+        char description[100];
+        char status[10];
+    };
+    
+    struct User users[100];
+    int userCount = 0;
+    struct Complaint complaints[100];
+    int complaintCount = 0;
+    
+    void loadUsers() {
+        FILE *fp = fopen("users.txt", "r");
+        if (fp) {
+            while (fscanf(fp, "%s %s %s", users[userCount].username, users[userCount].password, users[userCount].role) != EOF) {
+                userCount++;
         }
         fclose(fp);
     } else {
