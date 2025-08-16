@@ -1,1 +1,260 @@
 
+
+
+
+
+
+
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+struct User
+{
+char username[20];
+char password[20];
+char role[10];
+};
+struct Complaint {
+    int id;
+    char username[20];
+    char type[30];
+    char description[100];
+    char status[10];
+};
+
+struct User users[100];
+int userCount = 0;
+struct Complaint complaints[100];
+int complaintCount = 0;
+
+void loadUsers() {
+    FILE *fp = fopen("users.txt", "r");
+    if (fp) {
+        while (fscanf(fp, "%s %s %s", users[userCount].username, users[userCount].password, users[userCount].role) != EOF) {
+            userCount++;
+        }
+        fclose(fp);
+    } else {
+        FILE *fpw = fopen("users.txt", "w");
+        fprintf(fpw, "Afnan 12345 admin\n");
+        fprintf(fpw, "faruk 67890 staff\n");
+        fclose(fpw);
+        strcpy(users[0].username, "Afnan"); strcpy(users[0].password, "12345"); strcpy(users[0].role, "admin");
+        strcpy(users[1].username, "faruk"); strcpy(users[1].password, "67890"); strcpy(users[1].role, "staff");
+        userCount = 2;
+    }
+}
+
+void saveUser(struct User u) {
+    FILE *fp = fopen("users.txt", "a");
+    if (fp) {
+        fprintf(fp, "%s %s %s\n", u.username, u.password, u.role);
+        fclose(fp);
+    }
+}
+
+void loadComplaints() {
+    FILE *fp = fopen("complaints.txt", "r");
+    if (fp) {
+        while (fscanf(fp, "%d %s %s %[^\"] %[^\"]",
+                      &complaints[complaintCount].id,
+                      complaints[complaintCount].username,
+                      complaints[complaintCount].type,
+                      complaints[complaintCount].description,
+                      complaints[complaintCount].status) != EOF) {
+            complaintCount++;
+        }
+        fclose(fp);
+    }
+}
+
+void saveComplaint(struct Complaint c) {
+    FILE *fp = fopen("complaints.txt", "a");
+    if (fp) {
+        fprintf(fp, "%d %s %s %s %s\n", c.id, c.username, c.type, c.description, c.status);
+        fclose(fp);
+    }
+}
+
+void registerUser() {
+    if (userCount >= 100) return;
+    struct User u;
+    printf("\n\t\t||Registration||\t\t\n");
+    printf("Username: ");
+    scanf("%19s", u.username);
+    printf("Password: ");
+    scanf("%19s", u.password);
+    strcpy(u.role, "user");
+    users[userCount++] = u;
+    saveUser(u);
+    printf("User registered successfully!\n\n");
+}
+
+int loginWithRole(char *username, char *roleOut, const char *expectedRole) {
+    char pass[20];
+    printf("\n\t\tLogin as %s\t\t\n", expectedRole);
+    printf("Username: ");
+    scanf("%19s", username);
+    printf("Password: ");
+    scanf("%19s", pass);
+    for (int i = 0; i < userCount; i++) {
+        if (strcmp(users[i].username, username) == 0 && strcmp(users[i].password, pass) == 0 && strcmp(users[i].role, expectedRole) == 0) {
+            strcpy(roleOut, users[i].role);
+            return 1;
+        }
+    }
+    return 0;
+}
+void fileComplaint(char *username) {
+    if (complaintCount >= 100) return;
+    struct Complaint c;
+    c.id = complaintCount + 1;
+    strcpy(c.username, username);
+
+    printf("\n\t\tFile a Complaint\t\t\n");
+    printf("Complaint type: ");
+    scanf("%29s", c.type);
+    getchar();  // Consume newline left by previous scanf
+
+    printf("Description: ");
+    fgets(c.description, sizeof(c.description), stdin);
+    c.description[strcspn(c.description, "\n")] = 0;  // Remove trailing newline
+
+    strcpy(c.status, "Pending");
+    complaints[complaintCount++] = c;
+    saveComplaint(c);
+    printf("Complaint filed successfully!\n\n");
+}
+
+
+void viewComplaints(char *username) {
+    int found = 0;
+    printf("\n\t\tYour Complaints\t\t\n");
+    for (int i = 0; i < complaintCount; i++) {
+        if (strcmp(complaints[i].username, username) == 0) {
+            printf("ID: %d\nType: %s\nDescription:%s\nStatus:%s\n\n",
+                   complaints[i].id, complaints[i].type, complaints[i].description, complaints[i].status);
+            found = 1;
+        }
+    }
+    if (!found) printf("No complaints found.\n\n");
+}
+
+void staffPanel() {
+    int id;
+    char status[10];
+    printf("\n\t\tAll Complaints \t\t\n");
+    for (int i = 0; i < complaintCount; i++) {
+        printf("ID: %d\nUser: %s\nType: %s\nDescription: %s\nStatus: %s\n\n",
+               complaints[i].id, complaints[i].username, complaints[i].type, complaints[i].description, complaints[i].status);
+    }
+    printf("Enter complaint ID to update status (0 to skip): ");
+    scanf("%d", &id);
+    if (id > 0 && id <= complaintCount) {
+        printf("Enter new status (Approved/Denied/Pending): ");
+        scanf("%9s", status);
+        strcpy(complaints[id - 1].status, status);
+        FILE *fp = fopen("complaints.txt", "w");
+        for (int i = 0; i < complaintCount; i++) {
+            fprintf(fp, "%d %s %s %s %s\n",
+                    complaints[i].id, complaints[i].username, complaints[i].type,
+                    complaints[i].description, complaints[i].status);
+        }
+        fclose(fp);
+        printf("Status updated.\n");
+    }
+}
+
+void adminPanel() {
+    int choice;
+    struct User staff;
+    printf("\n\t\tAdmin Panel\t\t\n");
+    printf("1. Add Staff\n2. Remove Staff\n3. Generate Report\n4. Configure System Rules\nChoice: ");
+    scanf("%d", &choice);
+    if (choice == 1) {
+        printf("Enter staff username: ");
+        scanf("%19s", staff.username);
+        printf("Enter staff password: ");
+        scanf("%19s", staff.password);
+        strcpy(staff.role, "staff");
+        users[userCount++] = staff;
+        saveUser(staff);
+        printf("Staff added successfully.\n");
+    } else if (choice == 2) {
+        char delname[20];
+        printf("Enter staff username to remove: ");
+        scanf("%19s", delname);
+        FILE *fp = fopen("users.txt", "w");
+        int newCount = 0;
+        for (int i = 0; i < userCount; i++) {
+            if (strcmp(users[i].username, delname) == 0 && strcmp(users[i].role, "staff") == 0) continue;
+            fprintf(fp, "%s %s %s\n", users[i].username, users[i].password, users[i].role);
+            users[newCount++] = users[i];
+        }
+        userCount = newCount;
+        fclose(fp);
+        printf("Staff removed successfully.\n");
+    } else if (choice == 3) {
+        printf("Generating report... (not implemented)\n");
+    } else if (choice == 4) {
+        printf("Configuring system rules... (not implemented)\n");
+    } else {
+        printf("Invalid choice.\n");
+    }
+}
+
+void showHeader() {
+    printf("\n\t\t\t _______________________________________________\n");
+    printf("\t\t\t|                                               |\n");
+    printf("\t\t\t|        COMPLAINT MANAGEMENT SYSTEM            |\n");
+    printf("\t\t\t|_______________________________________________|\n\n");
+}
+
+int main() {
+    int choice;
+    char currentUser[20];
+    char currentRole[10];
+
+    loadUsers();
+    loadComplaints();
+
+    while (1) {
+        showHeader();
+        printf("1. Register \n2. Login\n3. Login as Staff\n4. Login as Admin\n5. Exit\nChoice: ");
+        scanf("%d", &choice);
+
+        if (choice == 1) {
+            registerUser();
+        } else if (choice >= 2 && choice <= 4) {
+            const char *roleName = (choice == 2) ? "user" : (choice == 3) ? "staff" : "admin";
+            if (loginWithRole(currentUser, currentRole, roleName)) {
+                printf("Login successful! Role: %s\n", currentRole);
+                if (strcmp(currentRole, "user") == 0) {
+                    int dashChoice;
+                    while (1) {
+                        printf("\n--- User Dashboard ---\n");
+                        printf("1. File Complaint\n2. View My Complaints\n3. Logout\nChoice: ");
+                        scanf("%d", &dashChoice);
+                        if (dashChoice == 1) fileComplaint(currentUser);
+                        else if (dashChoice == 2) viewComplaints(currentUser);
+                        else if (dashChoice == 3) break;
+                        else printf("Invalid choice.\n");
+                    }
+                } else if (strcmp(currentRole, "staff") == 0) {
+                    staffPanel();
+                } else if (strcmp(currentRole, "admin") == 0) {
+                    adminPanel();
+                }
+            } else {
+                printf("Invalid credentials for role %s.\n", roleName);
+            }
+        } else if (choice == 5) {
+            printf("Goodbye!\n");
+            break;
+        } else {
+            printf("Invalid choice. Try again.\n");
+        }
+    }}
+
